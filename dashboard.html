@@ -1,0 +1,173 @@
+<!-- frontend/dashboard.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Hospital Dashboard</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <nav class="topbar">
+    <strong>Hospital Dashboard</strong>
+    <button id="logoutBtn">Logout</button>
+  </nav>
+
+  <main class="grid">
+    <section>
+      <h3>Staff (Doctor/Nurse)</h3>
+      <div class="row">
+        <input id="staffName" placeholder="Name" />
+        <select id="staffRole">
+          <option>DOCTOR</option>
+          <option>NURSE</option>
+        </select>
+        <input id="staffDept" placeholder="Department/Ward" />
+        <button id="addStaffBtn">Add</button>
+      </div>
+      <ul id="staffList"></ul>
+    </section>
+
+    <section>
+      <h3>Reception (Appointments)</h3>
+      <div class="row">
+        <input id="recPatient" placeholder="Patient name" />
+        <input id="recDoctorId" placeholder="Doctor ID" />
+        <input id="recTime" placeholder="Time (e.g., 2025-11-12 14:30)" />
+        <button id="addRecBtn">Create</button>
+      </div>
+      <ul id="recList"></ul>
+    </section>
+
+    <section>
+      <h3>Pharmacy</h3>
+      <div class="row">
+        <input id="phName" placeholder="Item name" />
+        <input id="phQty" type="number" placeholder="Quantity" />
+        <button id="addPhBtn">Add Item</button>
+      </div>
+      <ul id="phList"></ul>
+    </section>
+
+    <section>
+      <h3>Billing</h3>
+      <div class="row">
+        <input id="billPatient" placeholder="Patient name" />
+        <input id="billService" placeholder="Service" />
+        <input id="billAmount" type="number" placeholder="Amount" />
+        <button id="addBillBtn">Create Bill</button>
+      </div>
+      <ul id="billList"></ul>
+    </section>
+  </main>
+
+  <script src="auth.js"></script>
+  <script src="api.js"></script>
+  <script>
+    // Protect route
+    if (!isAuthenticated()) {
+      window.location.href = 'index.html';
+    }
+
+    document.getElementById('logoutBtn').onclick = () => { logout(); location.href = 'index.html'; };
+
+    // STAFF
+    async function loadStaff() {
+      const res = await apiGet('/api/staff');
+      const list = document.getElementById('staffList');
+      list.innerHTML = '';
+      (res.data || []).forEach(s => {
+        const li = document.createElement('li');
+        li.textContent = `${s.name} (${s.role}) - ${s.department} [id=${s.id}]`;
+        const del = document.createElement('button');
+        del.textContent = 'Delete';
+        del.onclick = async () => { await apiDelete(`/api/staff/${s.id}`); loadStaff(); };
+        li.appendChild(del);
+        list.appendChild(li);
+      });
+    }
+    document.getElementById('addStaffBtn').onclick = async () => {
+      const name = document.getElementById('staffName').value.trim();
+      const role = document.getElementById('staffRole').value;
+      const dept = document.getElementById('staffDept').value.trim();
+      if (!name || !dept) return alert('Fill all fields');
+      await apiPost('/api/staff', { name, role, department: dept });
+      loadStaff();
+    };
+
+    // RECEPTION
+    async function loadReception() {
+      const res = await apiGet('/api/reception');
+      const list = document.getElementById('recList');
+      list.innerHTML = '';
+      (res.data || []).forEach(r => {
+        const li = document.createElement('li');
+        li.textContent = `${r.patientName} -> DoctorID ${r.doctorId} at ${r.appointmentTime} [id=${r.id}]`;
+        list.appendChild(li);
+      });
+    }
+    document.getElementById('addRecBtn').onclick = async () => {
+      const patientName = document.getElementById('recPatient').value.trim();
+      const doctorId = document.getElementById('recDoctorId').value.trim();
+      const appointmentTime = document.getElementById('recTime').value.trim();
+      if (!patientName || !doctorId || !appointmentTime) return alert('Fill all fields');
+      await apiPost('/api/reception', { patientName, doctorId, appointmentTime });
+      loadReception();
+    };
+
+    // PHARMACY
+    async function loadPharmacy() {
+      const res = await apiGet('/api/pharmacy');
+      const list = document.getElementById('phList');
+      list.innerHTML = '';
+      (res.data || []).forEach(p => {
+        const li = document.createElement('li');
+        li.textContent = `${p.name} — qty ${p.quantity} [id=${p.id}]`;
+        const inc = document.createElement('button');
+        inc.textContent = '+';
+        inc.onclick = async () => { await apiPatch(`/api/pharmacy/${p.id}/adjust?delta=1`); loadPharmacy(); };
+        const dec = document.createElement('button');
+        dec.textContent = '-';
+        dec.onclick = async () => { await apiPatch(`/api/pharmacy/${p.id}/adjust?delta=-1`); loadPharmacy(); };
+        li.appendChild(inc); li.appendChild(dec);
+        list.appendChild(li);
+      });
+    }
+    document.getElementById('addPhBtn').onclick = async () => {
+      const name = document.getElementById('phName').value.trim();
+      const quantity = parseInt(document.getElementById('phQty').value, 10) || 0;
+      if (!name) return alert('Enter item name');
+      await apiPost('/api/pharmacy', { name, quantity });
+      loadPharmacy();
+    };
+
+    // BILLING
+    async function loadBilling() {
+      const res = await apiGet('/api/billing');
+      const list = document.getElementById('billList');
+      list.innerHTML = '';
+      (res.data || []).forEach(b => {
+        const li = document.createElement('li');
+        li.textContent = `${b.patientName} — ${b.service} : ${b.amount} (paid: ${b.paid}) [id=${b.id}]`;
+        if (!b.paid) {
+          const payBtn = document.createElement('button');
+          payBtn.textContent = 'Mark Paid';
+          payBtn.onclick = async () => { await apiPatch(`/api/billing/${b.id}/pay`); loadBilling(); };
+          li.appendChild(payBtn);
+        }
+        list.appendChild(li);
+      });
+    }
+    document.getElementById('addBillBtn').onclick = async () => {
+      const patientName = document.getElementById('billPatient').value.trim();
+      const service = document.getElementById('billService').value.trim();
+      const amount = parseFloat(document.getElementById('billAmount').value) || 0;
+      if (!patientName || !service) return alert('Fill all fields');
+      await apiPost('/api/billing', { patientName, service, amount, paid: false });
+      loadBilling();
+    };
+
+    // Initial loads
+    loadStaff(); loadReception(); loadPharmacy(); loadBilling();
+  </script>
+</body>
+</html>
